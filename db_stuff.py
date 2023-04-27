@@ -7,108 +7,79 @@ Functions for handling the database.
 Author:
 Nilusink
 """
-import sqlalchemy as db
-import typing as tp
+import sqlite3
 
 
-# types
-class CPUStats:
-    core_voltage: float
-    core_clock: float
-    core_temp: float
-    usage: int
+def to_dict(keys: list, values: list) -> dict:
+    return {key: value for key, value in zip(keys, values)}
 
 
-# db setup---
-META = db.MetaData()
-DB_NAME: str = "./main.db"
-ENGINE = db.create_engine(f"sqlite:///{DB_NAME}", echo=False)
-
-WEATHER_EMP = db.Table(
-    'weather', META,
-    db.Column('id', db.Integer, primary_key=True),
-    db.Column("time", db.String, nullable=False),
-    db.Column("station_id", db.Integer, nullable=False),
-    db.Column("temperature", db.Float, nullable=True),
-    db.Column("temperature_index", db.Float, nullable=True),
-    db.Column("humidity", db.Float, nullable=True),
-    db.Column("air_pressure", db.Float, nullable=True),
-)
-
-STATIONS_EMP = db.Table(
-    "stations", META,
-    db.Column("id", db.Integer, primary_key=True),
-    db.Column("name", db.String, nullable=False),
-    db.Column("position", db.String, nullable=False),
-    db.Column("height", db.Float, nullable=True),
-)
-
-
-PI_STATS_EMP = db.Table(
-    "pi_stats", META,
-    db.Column("time", db.INT, primary_key=True, nullable=False),
-    db.Column("core_voltage", db.FLOAT, nullable=False),
-    db.Column("core_clock", db.FLOAT, nullable=False),
-    db.Column("core_temp", db.FLOAT, nullable=False),
-    db.Column("ram_total", db.INT, nullable=False),
-    db.Column("ram_total", db.INT, nullable=False),
-    db.Column("ram_left", db.INT, nullable=False),
-    db.Column("net_in", db.INT, nullable=False, default=0),
-    db.Column("net_out", db.INT, nullable=False, default=0),
-    db.Column("disk_read", db.INT, nullable=False, default=0),
-    db.Column("disk_write", db.INT, nullable=False, default=0),
-)
-
-
-def station_by_name(name: str) -> dict:
+def station_by_name(connection: sqlite3.Connection, name: str) -> dict:
     """
     get a station by its name
     """
-    connection = ENGINE.connect()
-    stations = db.Table('stations', META, autoload=True, autoload_with=ENGINE)
+    result = connection.execute("PRAGMA table_info(stations);")
+    t_info = result.fetchall()
+    keys = [column[1] for column in t_info]
 
-    query = db.select([stations]).where(stations.columns.name == name)
-    result = connection.execute(query).fetchall()
+    result = connection.execute(
+        "SELECT * FROM stations WHERE name = ?;",
+        (name,)
+    ).fetchone()
 
     # no results
     if not result:
         raise KeyError(f"No station with name {name}")
 
-    return dict(result[0])
+    return to_dict(keys, result)
 
 
-def get_last_weather(station_id: int) -> dict | None:
+def get_last_weather(
+        connection: sqlite3.Connection,
+        station_id: int
+) -> dict | None:
     """
     get the stations last entry
     """
-    connection = ENGINE.connect()
-    weather = db.Table('weather', META, autoload=True, autoload_with=ENGINE)
+    result = connection.execute("PRAGMA table_info(weather);")
+    t_info = result.fetchall()
+    keys = [column[1] for column in t_info]
 
-    query = db.select([weather]).where(weather.columns.station_id == station_id)
-    result = connection.execute(query).fetchall()
+    result = connection.execute(
+        "SELECT * FROM weather WHERE station_id = ? ORDER BY id DESC",
+        (station_id,)
+    ).fetchone()
 
     if result:
-        return dict(result[-1])
+        return to_dict(keys, result)
 
     return
 
 
-def get_all_weather(station_id: int) -> list[dict]:
+def get_all_weather(
+        connection: sqlite3.Connection,
+        station_id: int,
+        n_results: int = -1
+) -> list[dict]:
     """
     get all collected data points of a station
     """
-    connection = ENGINE.connect()
-    weather = db.Table('weather', META, autoload=True, autoload_with=ENGINE)
+    result = connection.execute("PRAGMA table_info(weather);")
+    t_info = result.fetchall()
+    keys = [column[1] for column in t_info]
 
-    query = db.select([weather]).where(weather.columns.station_id == station_id)
-    result = connection.execute(query).fetchall()
+    query = connection.execute(
+        "SELECT * FROM weather WHERE station_id = ? ORDER BY id DESC",
+        (station_id,)
+    )
+    if n_results < 0:
+        result = query.fetchall()
+
+    else:
+        result = query.fetchmany()
 
     out: list[dict] = []
-    for i in range(len(result)):
-        out.append(dict(result[i]))
+    for r in result:
+        out.append(to_dict(keys, r))
 
     return out
-
-
-def cpu_stats() -> CPUStats:
-    ...

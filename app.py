@@ -1,5 +1,6 @@
 from db_stuff import station_by_name, get_last_weather, get_all_weather
 from flask import Flask, render_template, jsonify, request
+from sqlite3 import connect
 import datetime
 import random
 import sys
@@ -7,7 +8,8 @@ import sys
 app = Flask(__name__)
 
 
-HOME_STATION: dict = station_by_name("HomeStation")
+HOME_STATION: dict = station_by_name(connect("main.db"), "HomeStation")
+print(f"{HOME_STATION=}")
 
 
 def month_from_date(month: int) -> str:
@@ -50,7 +52,12 @@ def day_from_date(day: int) -> str:
 
 @app.route('/')
 def index():
-    data = get_last_weather(HOME_STATION["id"])
+    data = get_last_weather(
+        connect("main.db"),
+        HOME_STATION["id"]
+    )
+
+    print(f"{data=}")
 
     t = data["time"]
 
@@ -65,7 +72,10 @@ def index():
 
 @app.route('/current_data')
 def current_data():
-    data = get_last_weather(HOME_STATION["id"])
+    data = get_last_weather(
+        connect("main.db"),
+        HOME_STATION["id"]
+    )
 
     t = data["time"]
 
@@ -73,7 +83,9 @@ def current_data():
     year, month, day = date.split(".")
     weekday = datetime.datetime(int(year), int(month), int(day)).weekday()
 
-    data["ftime"] = f"{time[:-3]}, {day_from_date(weekday)}, {day}. {month_from_date(int(month))} {year}"
+    data["ftime"] = f"{time[:-3]}, " \
+                    f"{day_from_date(weekday)}, " \
+                    f"{day}. {month_from_date(int(month))} {year}"
 
     return jsonify(data)
 
@@ -82,7 +94,11 @@ def current_data():
 def graph_data():
     n = request.args.get("n")
 
-    w_data = get_all_weather(HOME_STATION["id"])[(-int(n) if n else -100):]
+    w_data = get_all_weather(
+        connect("main.db"),
+        HOME_STATION["id"],
+        int(n) if n else -1
+    )
 
     times = [element["time"][-8:-3] for element in w_data]
 
